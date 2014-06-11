@@ -28,6 +28,8 @@
 
 bool yssEndian;
 
+void create_load_seg(linput_t *li, ea_t start, ea_t end, int type, const char *name);
+
 //--------------------------------------------------------------------------
 //
 //      check input file format. if recognized, then return 1
@@ -93,194 +95,56 @@ void SH2LoadState(linput_t *li, bool isslave, sh2regs_struct *regs, int size)
 	qlseek(li, size-sizeof(sh2regs_struct), SEEK_CUR);
 }
 
-/*
-int SoundLoadState (FILE *fp, int version, int size)
+void SoundLoadState (linput_t *li, ea_t *pc, int size)
 {
-	int i, i2;
-	u32 temp;
-	u8 nextphase;
+	char IsM68KRunning;   
+	int pos=qltell(li);
 
-	// Read 68k registers first
-	yread (&check, (void *)&IsM68KRunning, 1, 1, fp);
+	qlread(li, (void *)&IsM68KRunning, 1);
+	qlseek(li, 4 * (8+8+1), SEEK_CUR);
 
-	for (i = 0; i < 8; i++)
-	{
-		yread (&check, (void *)&temp, 4, 1, fp);
-		M68K->SetDReg (i, temp);
-	}
+	if (pc)
+		qlread(li, (void *)pc, 4);
+	else
+		qlseek(li, 4, SEEK_CUR);
 
-	for (i = 0; i < 8; i++)
-	{
-		yread (&check, (void *)&temp, 4, 1, fp);
-		M68K->SetAReg (i, temp);
-	}
+	qlseek (li, 0x1000, SEEK_CUR);
 
-	yread (&check, (void *)&temp, 4, 1, fp);
-	M68K->SetSR (temp);
-	yread (&check, (void *)&temp, 4, 1, fp);
-	M68K->SetPC (temp);
+	if (pc)
+	   create_load_seg(li, 0, 0x80000, 2, "RAM");
+	else
+		create_load_seg(li, 0x25A00000, 0x25A80000, 2, "SOUNDRAM");
 
-	// Now for the SCSP registers
-	yread (&check, (void *)scsp_reg, 0x1000, 1, fp);
-
-	// Lastly, sound ram
-	yread (&check, (void *)SoundRam, 0x80000, 1, fp);
-
-	if (version > 1)
-	{
-		// Internal variables need to be regenerated
-		for(i = 0; i < 32; i++)
-		{
-			for (i2 = 0; i2 < 0x20; i2+=2)
-				scsp_slot_set_w (i, 0x1E - i2, scsp_slot_get_w (i, 0x1E - i2));
-		}
-
-		scsp_set_w (0x402, scsp_get_w (0x402));
-
-		// Read slot internal variables
-		for (i = 0; i < 32; i++)
-		{
-			s32 einc;
-
-			yread (&check, (void *)&scsp.slot[i].key, 1, 1, fp);
-			yread (&check, (void *)&scsp.slot[i].fcnt, 4, 1, fp);
-			yread (&check, (void *)&scsp.slot[i].ecnt, 4, 1, fp);
-
-			yread (&check, (void *)&einc, 4, 1, fp);
-			switch (einc)
-			{
-			case 0:
-				scsp.slot[i].einc = &scsp.slot[i].einca;
-				break;
-			case 1:
-				scsp.slot[i].einc = &scsp.slot[i].eincd;
-				break;
-			case 2:
-				scsp.slot[i].einc = &scsp.slot[i].eincs;
-				break;
-			case 3:
-				scsp.slot[i].einc = &scsp.slot[i].eincr;
-				break;
-			default:
-				scsp.slot[i].einc = NULL;
-				break;
-			}
-
-			yread (&check, (void *)&scsp.slot[i].ecmp, 4, 1, fp);
-			yread (&check, (void *)&scsp.slot[i].ecurp, 4, 1, fp);
-
-			yread (&check, (void *)&nextphase, 1, 1, fp);
-			switch (nextphase)
-			{
-			case 0:
-				scsp.slot[i].enxt = scsp_env_null_next;
-				break;
-			case 1:
-				scsp.slot[i].enxt = scsp_release_next;
-				break;
-			case 2:
-				scsp.slot[i].enxt = scsp_sustain_next;
-				break;
-			case 3:
-				scsp.slot[i].enxt = scsp_decay_next;
-				break;
-			case 4:
-				scsp.slot[i].enxt = scsp_attack_next;
-				break;
-			default: break;
-			}
-
-			yread (&check, (void *)&scsp.slot[i].lfocnt, 4, 1, fp);
-			yread (&check, (void *)&scsp.slot[i].lfoinc, 4, 1, fp);
-
-			// Rebuild the buf8/buf16 variables
-			if (scsp.slot[i].pcm8b)
-			{
-				scsp.slot[i].buf8 = (s8*)&(scsp.scsp_ram[scsp.slot[i].sa]);
-				if ((scsp.slot[i].sa + (scsp.slot[i].lea >> SCSP_FREQ_LB)) >
-					SCSP_RAM_MASK)
-					scsp.slot[i].lea = (SCSP_RAM_MASK - scsp.slot[i].sa) <<
-					SCSP_FREQ_LB;
-			}
-			else
-			{
-				scsp.slot[i].buf16 = (s16*)&(scsp.scsp_ram[scsp.slot[i].sa & ~1]);
-				if ((scsp.slot[i].sa + (scsp.slot[i].lea >> (SCSP_FREQ_LB - 1))) >
-					SCSP_RAM_MASK)
-					scsp.slot[i].lea = (SCSP_RAM_MASK - scsp.slot[i].sa) <<
-					(SCSP_FREQ_LB - 1);
-			}
-		}
-
-		// Read main internal variables
-		yread (&check, (void *)&scsp.mem4b, 4, 1, fp);
-		yread (&check, (void *)&scsp.mvol, 4, 1, fp);
-
-		yread (&check, (void *)&scsp.rbl, 4, 1, fp);
-		yread (&check, (void *)&scsp.rbp, 4, 1, fp);
-
-		yread (&check, (void *)&scsp.mslc, 4, 1, fp);
-
-		yread (&check, (void *)&scsp.dmea, 4, 1, fp);
-		yread (&check, (void *)&scsp.drga, 4, 1, fp);
-		yread (&check, (void *)&scsp.dmfl, 4, 1, fp);
-		yread (&check, (void *)&scsp.dmlen, 4, 1, fp);
-
-		yread (&check, (void *)scsp.midinbuf, 1, 4, fp);
-		yread (&check, (void *)scsp.midoutbuf, 1, 4, fp);
-		yread (&check, (void *)&scsp.midincnt, 1, 1, fp);
-		yread (&check, (void *)&scsp.midoutcnt, 1, 1, fp);
-		yread (&check, (void *)&scsp.midflag, 1, 1, fp);
-
-		yread (&check, (void *)&scsp.timacnt, 4, 1, fp);
-		yread (&check, (void *)&scsp.timasd, 4, 1, fp);
-		yread (&check, (void *)&scsp.timbcnt, 4, 1, fp);
-		yread (&check, (void *)&scsp.timbsd, 4, 1, fp);
-		yread (&check, (void *)&scsp.timccnt, 4, 1, fp);
-		yread (&check, (void *)&scsp.timcsd, 4, 1, fp);
-
-		yread (&check, (void *)&scsp.scieb, 4, 1, fp);
-		yread (&check, (void *)&scsp.scipd, 4, 1, fp);
-		yread (&check, (void *)&scsp.scilv0, 4, 1, fp);
-		yread (&check, (void *)&scsp.scilv1, 4, 1, fp);
-		yread (&check, (void *)&scsp.scilv2, 4, 1, fp);
-		yread (&check, (void *)&scsp.mcieb, 4, 1, fp);
-		yread (&check, (void *)&scsp.mcipd, 4, 1, fp);
-
-		yread (&check, (void *)scsp.stack, 4, 32 * 2, fp);
-	}
-
-	return size;
+   qlseek(li, size-(qltell(li)-pos), SEEK_CUR);
 }
 
-int Vdp1LoadState(FILE *fp, UNUSED int version, int size)
+void Vdp1LoadState(linput_t *li, int size)
 {
-	// Read registers
-	yread(&check, (void *)Vdp1Regs, sizeof(Vdp1), 1, fp);
+	int pos=qltell(li);
+
+	// Skip registers
+	qlseek(li, 52, SEEK_CUR);
 
 	// Read VDP1 ram
-	yread(&check, (void *)Vdp1Ram, 0x80000, 1, fp);
+	create_load_seg(li, 0x25C00000, 0x25C80000, 1, "VDP1RAM");
 
-	return size;
+	qlseek(li, size-(qltell(li)-pos), SEEK_CUR);
 }
 
-int Vdp2LoadState(FILE *fp, UNUSED int version, int size)
+void Vdp2LoadState(linput_t *li, int size)
 {
-	// Read registers
-	yread(&check, (void *)Vdp2Regs, sizeof(Vdp2), 1, fp);
+	int pos=qltell(li);
+
+	// Skip registers
+	qlseek(li, 288, SEEK_CUR);
 
 	// Read VDP2 ram
-	yread(&check, (void *)Vdp2Ram, 0x80000, 1, fp);
+	create_load_seg(li, 0x25E00000, 0x25E80000, 1, "VDP2RAM");
 
 	// Read CRAM
-	yread(&check, (void *)Vdp2ColorRam, 0x1000, 1, fp);
-
-	// Read internal variables
-	yread(&check, (void *)&Vdp2Internal, sizeof(Vdp2Internal_struct), 1, fp);
-
-	return size;
+	create_load_seg(li, 0x25F00000, 0x25F01000, 2, "VDP2CRAM");
+	qlseek(li, size-(qltell(li)-pos), SEEK_CUR);
 }
-*/
 
 void make_vector(ea_t addr, char *name)
 {
@@ -418,26 +282,70 @@ bool find_parse_ip(ea_t ea, bool parsecode)
 	return true;
 }
 
-void create_load_seg(linput_t *li, ea_t start, ea_t end, const char *name)
+void create_load_seg(linput_t *li, ea_t start, ea_t end, int type, const char *name)
 {
 	add_segm(0, start, end, name, "");
-	for (ea_t i = 0; i < end-start; i+=4)
+	switch (type)
 	{
-		uint16 data, data2;
-		qlread(li, &data, 2);
-		qlread(li, &data2, 2);
-		put_long(start+i, (data << 16) | data2);
+	   case 1:
+			for (ea_t i = 0; i < end-start; i+=4)
+			{
+				uint32 data;
+				qlread(li, &data, 4);
+				put_long(start+i, data);
+			}
+			break;
+	   case 2: // Word Swap
+			for (ea_t i = 0; i < end-start; i+=4)
+			{
+				uint16 data, data2;
+				qlread(li, &data, 2);
+				qlread(li, &data2, 2);
+				put_long(start+i, (data << 16) | data2);
+			}
+			break;
+		case 3: // Reverse order
+			for (ea_t i = 0; i < end-start; i+=4)
+			{
+				uint32 data;
+				qlread(li, &data, 4);
+				data = swap32(data);
+				put_long(end-i-1, data);
+			}
+			break;
+		default: break;
 	}
 }
 
-void load_scudsp_data(linput_t *li)
+bool load_header(linput_t *li)
 {
+	int headerversion;
+	int size;
 
-}
+	qlseek(li, 3);
+	if (qlread(li, &yssEndian, 1) != 1)
+	{
+		error("Truncated file");
+		return false;
+	}
 
-void load_68k_data(linput_t *li)
-{
+	qlread(li, &headerversion, 4);
+	qlread(li, &size, 4);
+	int headersize=0xC;
+	if (headerversion == 2)
+	{
+		qlseek(li, 8, SEEK_CUR);
+		headersize+=8;
+	}
 
+	// Make sure size variable matches actual size minus header
+	if (size != (qlsize(li) - headersize))
+	{
+		error("Header size isn't valid");
+		return false;
+	}
+
+	return true;
 }
 
 ea_t find_string(char *search_str)
@@ -462,37 +370,19 @@ void get_lib_version(ea_t addr, int str_offset, char *version_str, size_t versio
 	sscanf_s(text, "Version %s *%s", version_str, version_str_size);
 }
 
-void load_sh2_data(linput_t *li)
+void load_scudsp_data(linput_t *li)
 {
-	int headerversion;
-	int size;
+
+}
+
+void load_68k_data(linput_t *li)
+{
 	int version;
 	int csize;
-	ea_t result;
-	sh2regs_struct sh2regs;
+	ea_t pc;
 
-	qlseek(li, 3);
-	if (qlread(li, &yssEndian, 1) != 1)
-	{
-		error("Truncated file");
+	if (!load_header(li))
 		return;
-	}
-
-	qlread(li, &headerversion, 4);
-	qlread(li, &size, 4);
-	int headersize=0xC;
-	if (headerversion == 2)
-	{
-		qlseek(li, 8, SEEK_CUR);
-		headersize+=8;
-	}
-
-	// Make sure size variable matches actual size minus header
-	if (size != (qlsize(li) - headersize))
-	{
-		error("Header size isn't valid");
-		return;
-	}
 
 	if (StateCheckRetrieveHeader(li, "CART", &version, &csize) != 0)
 	{
@@ -513,7 +403,7 @@ void load_sh2_data(linput_t *li)
 		error("Invalid MSH2 chunk");
 		return;
 	}
-	SH2LoadState(li, false, &sh2regs, csize);
+	qlseek(li, csize, SEEK_CUR);
 
 	if (StateCheckRetrieveHeader(li, "SSH2", &version, &csize) != 0)
 	{
@@ -527,7 +417,7 @@ void load_sh2_data(linput_t *li)
 		error("Invalid SCSP chunk");
 		return;
 	}
-	qlseek(li, csize, SEEK_CUR);
+	SoundLoadState(li, &pc, csize);
 
 	if (StateCheckRetrieveHeader(li, "SCU ", &version, &csize) != 0)
 	{
@@ -563,9 +453,95 @@ void load_sh2_data(linput_t *li)
 		return;
 	}
 
+	for (int i = 0x000004; i < 0x0000EC; i+=4)
+		make_vector(i, NULL);
+
+	// move cursor to current 68K PC
+	jumpto(pc);
+}
+
+void load_sh2_data(linput_t *li)
+{
+	int version;
+	int csize;
+	ea_t result;
+	sh2regs_struct sh2regs;
+
+	if (!load_header(li))
+		return;
+
+	if (StateCheckRetrieveHeader(li, "CART", &version, &csize) != 0)
+	{
+		error("Invalid CART chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "CS2 ", &version, &csize) != 0)
+	{
+		error("Invalid CS2 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "MSH2", &version, &csize) != 0)
+	{
+		error("Invalid MSH2 chunk");
+		return;
+	}
+	SH2LoadState(li, false, &sh2regs, csize);
+
+	if (StateCheckRetrieveHeader(li, "SSH2", &version, &csize) != 0)
+	{
+		error("Invalid SSH2 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "SCSP", &version, &csize) != 0)
+	{
+		error("Invalid SCSP chunk");
+		return;
+	}
+	SoundLoadState(li, NULL, csize);
+
+	if (StateCheckRetrieveHeader(li, "SCU ", &version, &csize) != 0)
+	{
+		error("Invalid SCU chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "SMPC", &version, &csize) != 0)
+	{
+		error("Invalid SMPC chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "VDP1", &version, &csize) != 0)
+	{
+		error("Invalid VDP1 chunk");
+		return;
+	}
+	Vdp1LoadState(li, csize);
+
+	if (StateCheckRetrieveHeader(li, "VDP2", &version, &csize) != 0)
+	{
+		error("Invalid VDP2 chunk");
+		return;
+	}
+	Vdp2LoadState(li, csize);
+
+	if (StateCheckRetrieveHeader(li, "OTHR", &version, &csize) != 0)
+	{
+		error("Invalid OTHR chunk");
+		return;
+	}
+
 	qlseek(li, 0x10000, SEEK_CUR); // BUP Ram
-	create_load_seg(li, 0x06000000, 0x06100000, "HWRAM");
-	create_load_seg(li, 0x00200000, 0x00300000, "LWRAM");
+	create_load_seg(li, 0x06000000, 0x06100000, 2, "HWRAM");
+	create_load_seg(li, 0x00200000, 0x00300000, 2, "LWRAM");
 	identify_vector_table();
 	find_bios_funcs();
 	find_parse_ip(0x06000C00, false);

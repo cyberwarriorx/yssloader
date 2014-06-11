@@ -1,8 +1,8 @@
 Introduction
 ------------
-This plugin was designed with Yabause debugging and saturn game hacking in mind. If that describes you, you've come to the right utility.
+This plugin was designed with Yabause debugging and Saturn game hacking in mind. If that describes you, you've come to the right utility.
 
-The basic function is to load a Yabause Save State file(*.yss) and depending on which cpu is selected, load up the appropriate code and settings. By default It loads up LWRAM/HWRAM for SH2. 68000 is also in the works. SCU DSP may be planned in the future.
+The basic function is to load a Yabause Save State file(*.yss) and depending on which cpu is selected, load up the appropriate code and settings. By default It loads up LWRAM/HWRAM for SH2. 68000 is also supported. SCU DSP may be coming in the future.
 
 Dependencies
 ------------
@@ -23,13 +23,12 @@ Usage Instruction
 1. Startup IDA Pro and select "New".
 2. Select your Yabause save state file and press "Open".
 3. Make sure "YSS File" is selected under file type list.
-4. (Optional) Select the cpu from the list. Only SH2 is support for now. If any unsupported cpu's are selected, it automatically chooses SH2.
+4. (Optional) Select the cpu from the list. If any unsupported cpu's are selected, it automatically chooses SH2.
 5. Press OK. Wait for IDA Pro to finish loading.
 
 Todo List
 ---------
 There's a few things I really want to add at some point given the time:
--68000 support
 -SCU DSP support
 -The ability to select which ram/register areas to include
 -Register naming option
