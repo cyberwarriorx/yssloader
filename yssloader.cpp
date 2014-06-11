@@ -20,6 +20,7 @@
 #include <ida.hpp>
 #include <idp.hpp>
 #include <loader.hpp>
+#include <name.hpp>
 #include <search.hpp>
 #include <diskio.hpp>
 
@@ -281,12 +282,14 @@ int Vdp2LoadState(FILE *fp, UNUSED int version, int size)
 }
 */
 
-void make_vector(ea_t addr)
+void make_vector(ea_t addr, char *name)
 {
 	doDwrd(addr, 4);
 	create_insn(get_long(addr));
 	add_func(get_long(addr), BADADDR);
    add_cref(addr, get_long(addr), fl_CF);
+	if (name != NULL)
+		set_name(addr, name);
 }
 
 void identify_vector_table()
@@ -295,61 +298,80 @@ void identify_vector_table()
 
 	// MSH2 vector table
 	for (i = 0x06000000; i < 0x06000200; i+=4)
-		make_vector(i);
+		make_vector(i, NULL);
 
 	// SSH2 vector table
 	for (i = 0x06000400; i < 0x06000600; i+=4)
-		make_vector(i);
+		make_vector(i, NULL);
+}
+
+void find_align(ea_t ea, ea_t maxea, asize_t length, int alignment)
+{
+	ea_t ret = next_unknown(ea, maxea);
+	msg("next_unknown: %08X. get_word: %04X", ret, get_word(ret));
+	if (ret != BADADDR && get_word(ret) == 0x0009)
+		doAlign(ret, length, alignment);
 }
 
 void find_bios_funcs()
 {
 	ea_t i;
-	make_vector(0x06000234);
-	make_vector(0x06000238);
-	make_vector(0x0600023C);
+	make_ascii_string(0x06000200, 16, ASCSTR_C);
+	doByte(0x06000210, 36);
+	make_vector(0x06000234, NULL);
+	make_vector(0x06000238, NULL);
+	make_vector(0x0600023C, NULL);
 	make_ascii_string(0x06000240, 4, ASCSTR_C);
 	make_ascii_string(0x06000244, 4, ASCSTR_C);
 	doDwrd(0x06000248, 4);
 	doDwrd(0x0600024C, 4);
-	make_vector(0x06000250);
+	make_vector(0x06000250, NULL);
 	doDwrd(0x06000264, 4);
-	make_vector(0x06000268);
-	make_vector(0x0600026C);
-	make_vector(0x06000270);
-	make_vector(0x06000274);
+	make_vector(0x06000268, NULL);
+	make_vector(0x0600026C, "bios_run_cd_player");
+	make_vector(0x06000270, NULL);
+	make_vector(0x06000274, "bios_is_mpeg_card_present");
 	doDwrd(0x06000278, 4);
 	doDwrd(0x0600027C, 4);
-	make_vector(0x06000280);
-	make_vector(0x06000284);
-	make_vector(0x06000288);
-	make_vector(0x0600028C);
+	make_vector(0x06000280, NULL);
+	make_vector(0x06000284, NULL);
+	make_vector(0x06000288, NULL);
+	make_vector(0x0600028C, NULL);
 	doDwrd(0x06000290, 4);
 	doDwrd(0x06000294, 4);
-	make_vector(0x06000298);
-	make_vector(0x0600029C);
+	make_vector(0x06000298, "bios_get_mpeg_rom");
+	make_vector(0x0600029C, NULL);
 	doDwrd(0x060002A0, 4);
 	doDwrd(0x060002A4, 4);
 	doDwrd(0x060002A8, 4);
 	doDwrd(0x060002AC, 4);
-	make_vector(0x060002B0);
+	make_vector(0x060002B0, NULL);
 	doDwrd(0x060002B4, 4);
 	doDwrd(0x060002B8, 4);
 	doDwrd(0x060002BC, 4);
 	doDwrd(0x060002C0, 4);
 	for (i = 0x060002C4; i < 0x06000324; i+=4)
-		make_vector(i);
+		make_vector(i, NULL);
+	set_name(0x06000300, "bios_set_scu_interrupt");
+	set_name(0x06000304, "bios_get_scu_interrupt");
+	set_name(0x06000310, "bios_set_sh2_interrupt");
+	set_name(0x06000314, "bios_get_sh2_interrupt");
+	set_name(0x06000320, "bios_set_clock_speed");
 	doDwrd(0x06000324, 4);
+	set_name(0x06000324, "bios_get_clock_speed");
 	for (i = 0x06000328; i < 0x06000348; i+=4)
-		make_vector(i);
+		make_vector(i, NULL);
+	set_name(0x06000340, "bios_set_scu_interrupt_mask");
+	set_name(0x06000344, "bios_change_scu_interrupt_mask");
 	doDwrd(0x06000348, 4);
-	make_vector(0x0600034C);
+	set_name(0x06000348, "bios_get_scu_interrupt_mask");
+	make_vector(0x0600034C, NULL);
 	doDwrd(0x06000350, 4);
 	doDwrd(0x06000354, 4);
 	doDwrd(0x06000358, 4);
 	doDwrd(0x0600035C, 4);
 	for (i = 0x06000360; i < 0x06000380; i+=4)
-		make_vector(i);
+		make_vector(i, NULL);
 	doByte(0x06000380, 16);
 	doWord(0x06000390, 16);
 	doDwrd(0x060003A0, 32);
@@ -361,7 +383,6 @@ void find_bios_funcs()
 	add_func(0x0600067C, BADADDR);
 	add_func(0x06000690, BADADDR);
 	doDwrd(0x06000A80, 0x80);
-
 }
 
 bool find_parse_ip(ea_t ea, bool parsecode)
