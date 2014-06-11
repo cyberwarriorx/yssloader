@@ -10,9 +10,25 @@ The code is based on the latest IDA Pro SDK and Visual Studio 2010. However you 
 
 It also looks for several sig files if SBL/SGL code is detected. I would've included them but I question the legality of sharing them. You can generate them yourself fairly trivially so long as you can find the SBL/SGL SDK's. 
 
-Missing or ideas
-----------------
-There's a few things I really want to add at some point given the time or that people may find helpful:
+Build/Install Instructions
+--------------------------
+1. With the project loaded up in Visual Studio, go into yssloader's project properties. Select "Release" configuration.
+2. Under "Configuration Properties"->"VC++ Directories", change the ida pro path for "Include Directories" and "Library Directories" to match your IDA Pro SDK directory.
+3. Under "Configuration Properties"->"Build Events"->"Post-Build Events", change "Command Line" so it matches your IDA Pro directory.
+4. Press OK to accept changes.
+5. Make sure active configuration is set to "Release". Build Solution.
+
+Usage Instruction
+-----------------
+1. Startup IDA Pro and select "New".
+2. Select your Yabause save state file and press "Open".
+3. Make sure "YSS File" is selected under file type list.
+4. (Optional) Select the cpu from the list. Only SH2 is support for now. If any unsupported cpu's are selected, it automatically chooses SH2.
+5. Press OK. Wait for IDA Pro to finish loading.
+
+Todo List
+---------
+There's a few things I really want to add at some point given the time:
 -68000 support
 -SCU DSP support
 -The ability to select which ram/register areas to include
