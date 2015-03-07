@@ -25,6 +25,8 @@
 #include <diskio.hpp>
 
 #define f_YSS 0x4444
+#define PLFM_SCUDSP 0x8124
+#define PLFM_SCSPDSP 0x8125
 
 bool yssEndian;
 
@@ -93,6 +95,165 @@ void SH2LoadState(linput_t *li, bool isslave, sh2regs_struct *regs, int size)
 	// Read registers
 	qlread(li, (void *)regs, sizeof(sh2regs_struct));
 	qlseek(li, size-sizeof(sh2regs_struct), SEEK_CUR);
+}
+
+typedef struct
+{
+	uint8 vector;
+	uint8 level;
+	uint16 mask;
+	uint32 statusbit;
+} scuinterrupt_struct;
+
+typedef struct
+{
+	/* DMA registers */
+	uint32 D0R;
+	uint32 D0W;
+	uint32 D0C;
+	uint32 D0AD;
+	uint32 D0EN;
+	uint32 D0MD;
+
+	uint32 D1R;
+	uint32 D1W;
+	uint32 D1C;
+	uint32 D1AD;
+	uint32 D1EN;
+	uint32 D1MD;
+
+	uint32 D2R;
+	uint32 D2W;
+	uint32 D2C;
+	uint32 D2AD;
+	uint32 D2EN;
+	uint32 D2MD;
+
+	uint32 DSTP;
+	uint32 DSTA;
+
+	/* DSP registers */
+	uint32 PPAF;
+	uint32 PPD;
+	uint32 PDA;
+	uint32 PDD;
+
+	/* Timer registers */
+	uint32 T0C;
+	uint32 T1S;
+	uint32 T1MD;
+
+	/* Interrupt registers */
+	uint32 IMS;
+	uint32 IST;
+
+	/* A-bus registers */
+	uint32 AIACK;
+	uint32 ASR0;
+	uint32 ASR1;
+	uint32 AREF;
+
+	/* SCU registers */
+	uint32 RSEL;
+	uint32 VER;
+
+	/* internal variables */
+	uint32 timer0;
+	uint32 timer1;
+	scuinterrupt_struct interrupts[30];
+	uint32 NumberOfInterrupts;
+} scuregs_struct;
+
+typedef struct {
+	uint32 ProgramRam[256];
+	uint32 MD[4][64];
+	union {
+		struct {
+			uint32 P:8;  // Program Ram Address
+			uint32 unused3:7;
+			uint32 LE:1; // Program counter load enable bit
+			uint32 EX:1; // Program execute control bit
+			uint32 ES:1; // Program step execute control bit
+			uint32 E:1;  // Program end interrupt flag
+			uint32 V:1;  // Overflow flag
+			uint32 C:1;  // Carry flag
+			uint32 Z:1;  // Zero flag
+			uint32 S:1;  // Sine flag
+			uint32 T0:1; // D0 bus use DMA execute flag
+			uint32 unused2:1;
+			uint32 EP:1; // Temporary stop execution flag
+			uint32 PR:1; // Pause cancel flag
+			uint32 unused1:5;
+		} part;
+		uint32 all;
+	} ProgControlPort;
+	uint8 PC;
+	uint8 TOP;
+	uint16 LOP;
+	int32 jmpaddr;
+	int32 delayed;
+	uint8 DataRamPage;
+	uint8 DataRamReadAddress;
+	uint8 CT[4];
+	uint32 RX;
+	uint32 RY;
+	uint32 RA0;
+	uint32 WA0;
+
+	union {
+		struct {
+			int64 L:32;
+			int64 H:16;
+			int64 unused:16;
+		} part;
+		int64 all;
+	} AC;
+
+	union {
+		struct {
+			int64 L:32;
+			int64 H:16;
+			int64 unused:16;
+		} part;
+		int64 all;
+	} P;
+
+	union {
+		struct {
+			int64 L:32;
+			int64 H:16;
+			int64 unused:16;
+		} part;
+		int64 all;
+	} ALU;
+
+	union {
+		struct {
+			int64 L:32;
+			int64 H:16;
+			int64 unused:16;
+		} part;
+		int64 all;
+	} MUL;
+
+} scudspregs_struct;
+
+void ScuLoadState (linput_t *li, ea_t *pc, int size)
+{
+	scuregs_struct Scu;
+	scudspregs_struct ScuDsp;
+
+	qlread(li, (void *)&Scu, sizeof(Scu));
+	qlread(li, (void *)&ScuDsp, sizeof(ScuDsp));
+
+	if (pc)
+	{
+		*pc = ScuDsp.PC;
+		ea_t start=0, end=0x100;
+		add_segm(0, start, end, "RAM", "");
+		for (ea_t i = 0; i < end-start; i++)
+			put_long(start+i, ScuDsp.ProgramRam[i]);
+	}
 }
 
 void SoundLoadState (linput_t *li, ea_t *pc, int size)
@@ -372,6 +533,88 @@ void get_lib_version(ea_t addr, int str_offset, char *version_str, size_t versio
 
 void load_scudsp_data(linput_t *li)
 {
+	int version;
+	int csize;
+	ea_t pc;
+
+	if (!load_header(li))
+		return;
+
+	if (StateCheckRetrieveHeader(li, "CART", &version, &csize) != 0)
+	{
+		error("Invalid CART chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "CS2 ", &version, &csize) != 0)
+	{
+		error("Invalid CS2 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "MSH2", &version, &csize) != 0)
+	{
+		error("Invalid MSH2 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "SSH2", &version, &csize) != 0)
+	{
+		error("Invalid SSH2 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "SCSP", &version, &csize) != 0)
+	{
+		error("Invalid SCSP chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "SCU ", &version, &csize) != 0)
+	{
+		error("Invalid SCU chunk");
+		return;
+	}
+	ScuLoadState(li, &pc, csize);
+
+	if (StateCheckRetrieveHeader(li, "SMPC", &version, &csize) != 0)
+	{
+		error("Invalid SMPC chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "VDP1", &version, &csize) != 0)
+	{
+		error("Invalid VDP1 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "VDP2", &version, &csize) != 0)
+	{
+		error("Invalid VDP2 chunk");
+		return;
+	}
+	qlseek(li, csize, SEEK_CUR);
+
+	if (StateCheckRetrieveHeader(li, "OTHR", &version, &csize) != 0)
+	{
+		error("Invalid OTHR chunk");
+		return;
+	}
+
+	// move cursor to current SCU DSP PC
+	jumpto(pc);
+}
+
+void load_scspdsp_data(linput_t *li)
+{
 
 }
 
@@ -596,6 +839,14 @@ static void idaapi load_yss_file(linput_t *li, ushort neflags,
 	   case PLFM_68K:
 			set_processor_type("68000", SETPROC_ALL|SETPROC_FATAL);
 			load_68k_data(li);
+			break;
+		case PLFM_SCUDSP:
+			set_processor_type("scudsp", SETPROC_ALL|SETPROC_FATAL);
+			load_scudsp_data(li);
+			break;
+		case PLFM_SCSPDSP:
+			set_processor_type("scspdsp", SETPROC_ALL|SETPROC_FATAL);
+			load_scspdsp_data(li);
 			break;
 	   case PLFM_SH:
 		default:
